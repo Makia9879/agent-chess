@@ -20,7 +20,7 @@ MVP 交付目标：
 | 2 | 开发环境 | docker-compose 开发环境 | - 新增 `docker-compose.yml`<br />- 定义 `web`、`worker`、`mcp-adapter`、`postgres`、`migrate` 服务<br />- 本地 PostgreSQL 使用 UTF-8 初始化<br />- 所有构建、测试、迁移验证命令通过容器执行 | 后端 | 1人天 |
 | 3 | 配置 | Worker 配置初始化 | - 新增 `apps/worker/src/config.ts`<br />- 支持读取 Worker Vars、Secrets、Durable Object binding、Hyperdrive binding<br />- 启动或首次请求时校验必填配置<br />- 配置缺失时返回 `500 config_error` | 后端 | 1人天 |
 | 4 | 配置 | 动态配置读取 | - 新增 `runtime_config` 表迁移<br />- 支持读取 CORS、房间配置、限流配置<br />- Worker 对动态配置做短 TTL 缓存<br />- 读取失败时保留上一份有效配置 | 后端 | 1人天 |
-| 5 | 数据库 | 基础表迁移 | - 新增 `rooms`、`room_participants`、`games`、`game_moves` 表<br />- `games` 增加 `version` 字段<br />- `room_participants` 增加 token 哈希和执棋方唯一约束<br />- `game_moves` 增加 `participant_id` 和审计字段<br />- 本地和 Neon schema 保持一致 | 后端 | 1.5人天 |
+| 5 | 数据库 | 基础表迁移 | - 新增 `rooms`、`room_participants`、`games`、`game_moves` 表<br />- `games` 增加 `version` 字段<br />- `room_participants` 增加 token 哈希和白/黑执棋方唯一约束<br />- `game_moves` 增加 `participant_id` 和审计字段<br />- 本地和 Neon schema 保持一致 | 后端 | 1.5人天 |
 | 6 | 数据库 | 迁移执行与校验 | - 容器内执行本地迁移<br />- 校验 `SHOW SERVER_ENCODING` 返回 `UTF8`<br />- 支持显式目标执行 Neon 迁移<br />- 防止误把生产迁移打到本地或反向误操作 | 后端 | 1人天 |
 | 7 | 棋规 | 棋局规则封装 | - 引入 TypeScript 棋规库，优先 `chess.js`<br />- 支持标准初始局面和指定 FEN 初始化<br />- 支持合法走法列表、UCI 走法校验、终态判断<br />- 服务端不提供 AI 和 bestmove | 后端 | 1.5人天 |
 | 8 | Worker API | 创建房间 | - 实现 `POST /api/rooms`<br />- 支持字段：`fen`、`display_name`<br />- 生成 `room_id`、`room_code`、`game_id`<br />- 写入 `rooms`、`room_participants`、`games`<br />- 返回 FEN、turn、status、version、legal_moves | 后端 | 1.5人天 |

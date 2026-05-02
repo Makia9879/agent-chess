@@ -272,8 +272,7 @@ CREATE TABLE room_participants (
   side TEXT NOT NULL DEFAULT 'spectator',
   token_hash TEXT NOT NULL,
   joined_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (room_id, participant_type, display_name),
-  UNIQUE (room_id, side)
+  UNIQUE (room_id, participant_type, display_name)
 );
 
 CREATE TABLE games (
@@ -310,6 +309,9 @@ CREATE TABLE runtime_config (
 CREATE INDEX idx_game_moves_game_id_ply ON game_moves(game_id, ply);
 CREATE INDEX idx_games_room_id ON games(room_id);
 CREATE INDEX idx_room_participants_room_id ON room_participants(room_id);
+CREATE UNIQUE INDEX idx_room_participants_room_id_playing_side
+  ON room_participants(room_id, side)
+  WHERE side IN ('white', 'black');
 ```
 
 字段规则：
