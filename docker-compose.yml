@@ -1,0 +1,87 @@
+services:
+  web:
+    image: node:22-alpine
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+      - pnpm-store:/pnpm/store
+    environment:
+      PNPM_HOME: /pnpm
+      PNPM_STORE_DIR: /pnpm/store
+      NEXT_PUBLIC_WORKER_BASE_URL: http://localhost:8787
+      NEXT_PUBLIC_WS_BASE_URL: ws://localhost:8787
+    command: sh -lc "corepack enable && pnpm --dir apps/web dev --hostname 0.0.0.0"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - worker
+
+  worker:
+    image: node:22-alpine
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+      - pnpm-store:/pnpm/store
+    environment:
+      PNPM_HOME: /pnpm
+      PNPM_STORE_DIR: /pnpm/store
+      DATABASE_URL: postgres://chess:chess@postgres:5432/chess
+      CORS_ALLOW_ORIGINS: http://localhost:3000
+      ROOM_CODE_LENGTH: "6"
+      RUNTIME_CONFIG_TTL_SECONDS: "60"
+    command: sh -lc "corepack enable && pnpm --dir apps/worker dev --ip 0.0.0.0"
+    ports:
+      - "8787:8787"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  mcp-adapter:
+    image: node:22-alpine
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+      - pnpm-store:/pnpm/store
+    environment:
+      PNPM_HOME: /pnpm
+      PNPM_STORE_DIR: /pnpm/store
+      WORKER_BASE_URL: http://worker:8787
+    command: sh -lc "corepack enable && pnpm --dir apps/mcp-adapter dev"
+    depends_on:
+      - worker
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: chess
+      POSTGRES_PASSWORD: chess
+      POSTGRES_DB: chess
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chess -d chess"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    image: node:22-alpine
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+      - pnpm-store:/pnpm/store
+    environment:
+      PNPM_HOME: /pnpm
+      PNPM_STORE_DIR: /pnpm/store
+      DATABASE_URL: postgres://chess:chess@postgres:5432/chess
+    command: sh -lc "corepack enable && pnpm --dir apps/worker migrate:local"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pnpm-store:
+  postgres-data:

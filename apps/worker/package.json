@@ -1,0 +1,26 @@
+{
+  "name": "@chess-room/worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --local --persist-to .wrangler/state",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "lint": "tsc --noEmit",
+    "migrate:local": "tsx src/migrate.ts"
+  },
+  "dependencies": {
+    "@chess-room/shared": "workspace:*",
+    "chess.js": "^1.2.0",
+    "postgres": "^3.4.5"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250507.0",
+    "@types/node": "^22.15.17",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.3",
+    "wrangler": "^4.14.4"
+  }
+}

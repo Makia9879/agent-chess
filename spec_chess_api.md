@@ -38,9 +38,9 @@
 
 ## 架构边界
 
-前端模块建议：
+前端模块：
 
-- `apps/web`：Vercel 前端，建议使用 Next.js + TypeScript。
+- `apps/web`：Vercel 前端，使用 Next.js + TypeScript。
 - `apps/web/src/app`：页面、路由和房间 UI。
 - `apps/web/src/lib/api.ts`：封装 Worker HTTP/WebSocket 调用。
 - `apps/web/src/components`：棋盘、房间信息、参与者列表、走法记录。
@@ -75,6 +75,8 @@ MCP 模块建议：
 
 - C1 Agent：只依赖本地 MCP adapter，不直接依赖浏览器接口。
 - C2 浏览器：通过 HTTP 创建房间、读取房间和棋局、提交人类走法，通过 WebSocket 订阅房间棋局变更。
+- 第一阶段每个房间只允许两个 Agent 执棋：一个 `white`，一个 `black`。
+- `spectator` 仅供 C2 浏览器观察使用，不允许 MCP Agent 以观察者身份加入房间。
 
 ## 程序架构图
 
@@ -140,6 +142,8 @@ Cloudflare Workers：
 - 负责 CORS、请求校验、错误响应、路由分发。
 - 通过 Durable Object namespace 定位房间实例。
 - 通过 Hyperdrive 或 Neon serverless driver 访问 Neon；优先 Hyperdrive。
+- 提供 `GET /api/health` 健康检查端点，供 Vercel、CI 或人工探测使用。
+- Cloudflare 配置以 `apps/worker/wrangler.toml` 为准，至少声明 Worker 名称、兼容性日期、Durable Object binding、迁移记录、Hyperdrive binding、环境变量占位和生产 route。
 
 Cloudflare Durable Objects：
 
@@ -153,6 +157,7 @@ Neon PostgreSQL：
 - 保存房间、参与者、棋局、走法。
 - 使用 pooled connection string 或 Cloudflare Hyperdrive，避免边缘函数连接爆炸。
 - 数据库字符集必须为 UTF-8，迁移或启动校验时执行 `SHOW SERVER_ENCODING`，结果必须为 `UTF8`。
+- 优先配置 Cloudflare Hyperdrive；如果 Hyperdrive 不可用，fallback 到 Neon pooled connection string。
 
 本地 MCP adapter：
 
@@ -160,6 +165,24 @@ Neon PostgreSQL：
 - 对 Agent 暴露 MCP tools。
 - MCP tools 内部调用 Cloudflare Worker HTTPS API。
 - 不直接连接 Neon，不绕过服务端合法性校验。
+- 通过 `WORKER_BASE_URL` 指定 Worker API 地址；本地联调指向 `http://worker:8787` 或 `http://localhost:8787`，生产指向 Cloudflare Worker 正式域名。
+
+## 共享类型
+
+`packages/shared` 保存 Web、Worker、MCP adapter 共用的 TypeScript 类型。
+
+第一阶段至少包含：
+
+- `RoomState`：房间、参与者、棋局、合法走法、走法记录的聚合响应。
+- `ParticipantView`：参与者展示字段，不包含 token。
+- `MoveView`：走法记录展示字段和审计关联字段。
+- `CreateRoomRequest`、`CreateRoomResponse`。
+- `JoinRoomRequest`、`JoinRoomResponse`。
+- `SubmitMoveRequest`、`SubmitMoveResponse`。
+- `SubmitMoveResponse` 等同于 `RoomState`，提交走法成功后返回更新后的完整房间棋局聚合状态。
+- `RoomEvent`：`room.participant_joined`、`game.updated`。
+
+共享类型只能放协议字段和枚举，不放平台相关代码。
 
 ## 开发环境方案
 
@@ -169,6 +192,9 @@ Neon PostgreSQL：
 
 - `docker-compose.yml` 至少定义 `web`、`worker`、`mcp-adapter`、`postgres`、`migrate` 服务。
 - 本地 `postgres` 必须使用 UTF-8 初始化。
+- `postgres` 服务必须配置 `healthcheck`，至少使用 `pg_isready` 校验数据库可连接。
+- `migrate` 服务必须通过 `depends_on.postgres.condition=service_healthy` 等待 PostgreSQL 就绪后再执行迁移。
+- `worker` 服务本地启动时也应等待 `postgres` 健康，避免 dev server 先于数据库可用导致首次请求失败。
 - 所有构建、测试、lint、迁移验证命令都必须通过 `docker-compose` 执行。
 - 不在宿主机直接执行 `npm install`、`pnpm install`、`npm test`、`pnpm test`、`wrangler dev`、`tsc` 或迁移命令。
 - 生产部署命令可以由 CI/CD 执行；本地调试部署配置时，也应通过容器中的 Vercel CLI / Wrangler 执行。
@@ -187,8 +213,17 @@ Neon PostgreSQL：
 
 - Vercel 前端配置使用 Vercel Environment Variables。
 - Cloudflare Worker 配置使用 Worker Vars、Secrets、Durable Object binding、Hyperdrive binding。
+- `apps/worker/wrangler.toml` 负责声明 Cloudflare Worker 的静态部署配置，包括 `main`、`compatibility_date`、Durable Object binding、Durable Object migration、Hyperdrive binding、环境变量名和生产 route。
 - Neon 连接信息必须使用 Secret 或 Hyperdrive binding，不写入代码仓库。
 - 生产环境不使用文件监听热更新。
+
+CORS：
+
+- 生产 `allow_origins` 只允许 Vercel 正式域名和明确配置的 preview 域名。
+- 本地开发允许 `http://localhost:3000`、`http://127.0.0.1:3000` 和 docker-compose 内部 web 服务地址。
+- 允许方法：`GET`、`POST`、`OPTIONS`。
+- 允许请求头：`Content-Type`，后续如引入 request id 可追加 `X-Request-Id`。
+- 第一阶段不使用 cookie 鉴权，`Access-Control-Allow-Credentials` 保持 `false` 或不返回。
 
 初始化加载：
 
@@ -235,7 +270,11 @@ Neon PostgreSQL：
 - 数据库字符集要求为 UTF-8。
 - 本地 `docker-compose.yml` 中 PostgreSQL 服务必须显式设置初始化参数，确保 `POSTGRES_INITDB_ARGS=--encoding=UTF8 --locale=C`，或采用等价方式保证数据库编码为 UTF-8。
 - Neon 迁移完成后必须校验 `SHOW SERVER_ENCODING` 返回 `UTF8`。
-- 迁移脚本放在 `migrations/` 目录，由容器内迁移工具执行。
+- 迁移脚本放在 `migrations/` 目录。
+- 迁移文件命名使用递增编号：`0001_init.sql`、`0002_add_xxx.sql`。migration runner 按文件名升序执行，编号不得复用或重排。
+- 回滚脚本放在 `migrations/rollback/`，命名与正向迁移对应，例如 `0002_add_xxx.down.sql`。生产回滚必须人工确认目标 Neon 项目和回滚范围。
+- 第一阶段迁移工具采用手写 SQL + 容器内 TypeScript migration runner，不引入 Prisma/Drizzle/Knex。
+- 生产 Neon 迁移必须显式确认目标环境后由 `scripts/migrate-neon.sh` 执行。
 
 核心数据模型：
 
@@ -318,6 +357,8 @@ CREATE UNIQUE INDEX idx_room_participants_room_id_playing_side
 
 - `rooms.code` 是房间加入码，由服务端生成，供 Web 用户复制给本地 MCP Agent。
 - `room_participants.side` 可选 `white`、`black`、`spectator`，同一房间同一执棋方只能有一个参与者。
+- `UNIQUE (room_id, participant_type, display_name)` 只约束同一房间内同类型同名参与者，避免同一个 Agent 重复加入；不限制同一 `display_name` 加入不同房间。
+- MCP Agent 只能加入 `white` 或 `black`；`spectator` 仅用于 C2 浏览器观察记录。
 - `room_participants.token_hash` 保存参与者令牌哈希，原始令牌只在创建或加入成功时返回一次。
 - `games.room_id` 表示棋局隶属房间。第一阶段一个房间只创建一盘棋。
 - `games.fen` 保存当前局面，作为读取棋局的主来源。
@@ -338,6 +379,137 @@ CREATE UNIQUE INDEX idx_room_participants_room_id_playing_side
 - 提交走法时必须在一个数据库事务内更新 `games` 并插入 `game_moves`。
 - `ply` 由当前棋局已有走法数加一得到，必须和 `UNIQUE (game_id, ply)` 配合避免重复写入。
 
+## 安全与防篡改
+
+Token 规则：
+
+- `participant_token` 使用 Web Crypto `crypto.getRandomValues` 生成 32 字节随机数，并编码为 64 位十六进制字符串。
+- 数据库不保存原始 token，只保存 `SHA-256(participant_token)` 的十六进制哈希。
+- MVP 不使用 bcrypt。原因是 token 本身是高熵随机值，不是用户自选密码；SHA-256 足够用于等值校验。
+- 原始 `participant_token` 只在创建房间或加入房间成功时返回一次。
+
+`room_code` 规则：
+
+- 默认长度为 6，可通过动态配置调整，允许范围 4-16。
+- 字符集为 `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`，排除容易混淆的 `I`、`O`、`0`、`1`。
+- 生成后写入 `rooms.code`，依赖唯一约束防冲突。
+- 如果发生冲突，服务端最多重试 5 次；仍失败则返回 `500 internal_error` 并记录日志。
+
+提交走法防篡改规则：
+
+- 必须携带 `participant_token`。
+- token 哈希必须匹配当前房间参与者。
+- 参与者必须属于当前房间。
+- 参与者 `side` 必须等于当前 FEN 行动方。
+- `spectator` 不能提交走法。
+- `expected_version` 如传入，必须等于当前 `games.version`。
+- UCI 走法必须由服务端棋规库校验合法。
+- 通过 Durable Object 对同一房间提交串行化处理。
+
+MVP 不做反作弊。Agent 使用何种方式思考走法不属于服务端判断范围。
+
+## 限流方案
+
+限流目标：
+
+- 防止恶意请求打满 Worker、Durable Object 或 Neon。
+- 不把限流作为棋局正确性的依据；棋局正确性仍由 token、执棋方、版本、棋规校验保证。
+
+第一阶段限流：
+
+- Worker 层按 IP 对 HTTP API 做滑动窗口或固定窗口限流。
+- 存储选型：MVP 使用 Worker 内存做单 isolate 近似限流，成本最低但跨 isolate 不强一致；如果生产观测到绕过或热点攻击，再升级为 Cloudflare KV 或 Rate Limiting Rules。
+- Durable Object 内对单房间提交队列做长度限制。
+- WebSocket 每连接限制发送队列长度，超过后主动断开该连接。
+
+默认建议：
+
+- 单 IP：每分钟 120 次普通 API 请求。
+- 单 IP：每分钟 30 次提交走法请求。
+- 单房间 Durable Object 待处理提交队列最大 64。
+- 单 WebSocket 连接待发送消息最大 128。
+
+触发限流返回 `429 rate_limited`。
+
+## Durable Object 生命周期
+
+创建：
+
+- Web 创建房间成功后，Worker 使用 `room_id` 定位 Durable Object。
+- Durable Object 不把棋局状态作为唯一持久来源；Neon 是事实来源。
+
+休眠与恢复：
+
+- Durable Object 可能被 Cloudflare 驱逐或休眠。
+- 恢复后通过 `room_id` 从 Neon 读取房间、棋局、参与者和走法。
+- WebSocket 连接不会跨休眠保留，客户端需要重连。
+
+空闲关闭：
+
+- 第一阶段支持空闲房间自动关闭。
+- 默认房间空闲关闭时间为 30 分钟，可通过 `runtime_config` 调整。
+- 空闲定义：无 WebSocket 连接，且无走法提交、加入房间、查询状态等活跃事件。
+- 房间关闭后 `rooms.status` 更新为 `closed`，后续加入和走棋返回 `409 room_closed`。
+
+实现方式：
+
+- 优先使用 Durable Object alarm 更新空闲房间状态。
+- 如果 alarm 不可用，后续可以补定时扫描；MVP 优先 DO alarm。
+
+Alarm 处理逻辑：
+
+- 每次加入房间、查询状态、提交走法、WebSocket 建连或收到 `pong` 时，更新 DO 内部 `last_active_at`，并将 alarm 重置到 `last_active_at + idle_timeout`。
+- alarm 触发后先从 Neon 读取房间状态和最新活跃时间；如果房间已结束或已关闭，不再重复处理。
+- 如果距离最新活跃时间仍小于 `idle_timeout`，说明触发前有新活动，仅重新设置下一次 alarm。
+- 如果无 WebSocket 连接且超过 `idle_timeout`，将 `rooms.status` 更新为 `closed`，广播 `error` 或关闭事件后断开剩余连接。
+- alarm 处理失败时记录结构化日志，并依赖 Cloudflare alarm 重试；重复执行必须是幂等的。
+
+## WebSocket 协议
+
+连接端点：
+
+- `GET /api/rooms/{room_id}/events`
+
+序列化格式：
+
+- 所有消息使用 JSON。
+- 服务端事件必须包含 `type` 字段。
+- 第一阶段事件：`room.participant_joined`、`game.updated`、`ping`、`error`。
+
+心跳：
+
+- 服务端每 25 秒发送一次 `ping`。
+- 客户端收到 `ping` 后应回复 `{"type":"pong"}`。
+- 服务端 60 秒内未收到任何客户端消息或 `pong` 时，可以主动关闭连接并清理连接状态。
+- 客户端 60 秒内未收到任何消息时应重连。
+- 客户端重连使用指数退避，建议 1 秒、2 秒、5 秒、10 秒，最大 30 秒。
+
+错误处理：
+
+- `room_id` 不存在时，WebSocket 握手返回 `404 room_not_found`，不建立连接。
+- 房间已关闭时，返回 `409 room_closed`，不建立连接。
+- 服务端发送 `error` 事件后可主动关闭连接。
+
+## 可观测性
+
+日志：
+
+- Worker 请求日志使用 JSON 格式。
+- Durable Object 记录加入房间、提交走法、广播失败、WebSocket 断开、限流等事件。
+- 日志不得输出 `participant_token` 原文。
+
+监控：
+
+- 关注 Worker 异常率、响应状态码分布、`429 rate_limited` 次数。
+- 关注 Durable Object 单房间提交队列长度、WebSocket 连接数、广播失败次数。
+- 关注 Neon 查询错误和事务失败。
+
+告警：
+
+- Worker 5xx 错误持续升高。
+- Durable Object 队列持续接近上限。
+- Neon 连接或事务错误持续出现。
+
 ## 请求解析与校验
 
 统一约定：
@@ -346,6 +518,7 @@ CREATE UNIQUE INDEX idx_room_participants_room_id_playing_side
 - 请求和响应使用 JSON。
 - 走法使用 UCI 格式。
 - 局面使用标准 FEN。
+- `display_name` 长度为 1-64 个字符，服务端会 trim；空字符串或超长返回 `400 invalid_display_name`。
 - `room_id`、`game_id` 只由服务端创建，客户端不能自行指定。
 - `participant_token` 只在创建房间或加入房间成功时返回，之后提交走法必须携带。
 - Web 创建房间后，服务端返回 `room_code`。本地 Agent 通过 MCP 使用 `room_code` 加入房间。
@@ -381,6 +554,7 @@ Web 创建房间，并自动创建初始棋局。
 {
   "room_id": "uuid",
   "room_code": "ABCD12",
+  "room_status": "active",
   "game_id": "uuid",
   "participant_id": "uuid",
   "participant_token": "secret-once",
@@ -411,6 +585,43 @@ Web 创建房间，并自动创建初始棋局。
 - `moves`
 - `updated_at`
 
+响应：
+
+```json
+{
+  "room_id": "uuid",
+  "room_code": "ABCD12",
+  "room_status": "active",
+  "participants": [
+    {
+      "participant_id": "uuid",
+      "participant_type": "agent",
+      "display_name": "agent-white",
+      "side": "white",
+      "joined_at": "2026-05-02T20:00:00+08:00"
+    }
+  ],
+  "game_id": "uuid",
+  "fen": "current fen",
+  "turn": "black",
+  "status": "active",
+  "version": 1,
+  "legal_moves": ["e7e5"],
+  "moves": [
+    {
+      "ply": 1,
+      "uci": "e2e4",
+      "san": "e4",
+      "actor": "agent",
+      "participant_id": "uuid",
+      "fen_after": "fen after e2e4",
+      "created_at": "2026-05-02T20:00:05+08:00"
+    }
+  ],
+  "updated_at": "2026-05-02T20:00:05+08:00"
+}
+```
+
 ### `POST /api/rooms/{room_id}/moves`
 
 Web 提交人类走法。
@@ -434,6 +645,43 @@ Web 提交人类走法。
 - 棋局非 `active` 时拒绝走棋。
 - 成功后持久化更新 Neon 棋局和走法记录，并向 WebSocket 订阅者广播 `game.updated`。
 
+响应：
+
+```json
+{
+  "room_id": "uuid",
+  "room_code": "ABCD12",
+  "room_status": "active",
+  "participants": [
+    {
+      "participant_id": "uuid",
+      "participant_type": "agent",
+      "display_name": "agent-white",
+      "side": "white",
+      "joined_at": "2026-05-02T20:00:00+08:00"
+    }
+  ],
+  "game_id": "uuid",
+  "fen": "fen after e2e4",
+  "turn": "black",
+  "status": "active",
+  "version": 1,
+  "legal_moves": ["e7e5"],
+  "moves": [
+    {
+      "ply": 1,
+      "uci": "e2e4",
+      "san": "e4",
+      "actor": "agent",
+      "participant_id": "uuid",
+      "fen_after": "fen after e2e4",
+      "created_at": "2026-05-02T20:00:05+08:00"
+    }
+  ],
+  "updated_at": "2026-05-02T20:00:05+08:00"
+}
+```
+
 ### `GET /api/rooms/{room_id}/legal-moves`
 
 返回当前局面所有合法 UCI 走法。
@@ -443,11 +691,111 @@ Web 提交人类走法。
 - C2 浏览器高亮可走位置。
 - 本地 MCP adapter 也可复用该 HTTP 能力。
 
+响应：
+
+```json
+{
+  "room_id": "uuid",
+  "game_id": "uuid",
+  "fen": "current fen",
+  "legal_moves": ["e2e4", "d2d4"]
+}
+```
+
+### `POST /api/rooms/by-code/{room_code}/join`
+
+本地 MCP adapter 使用房间码加入房间。
+
+说明：
+
+- 不使用 `POST /api/rooms/{room_code}/join`，避免与 `GET /api/rooms/{room_id}` 在路径上产生歧义。
+
+请求：
+
+```json
+{
+  "display_name": "local-agent",
+  "side": "black"
+}
+```
+
+规则：
+
+- `room_code` 来自路径参数。
+- `display_name` 必填。
+- `side` 可选 `white`、`black`。
+- `room_code` 不存在返回 `404 room_not_found`。
+- 房间已关闭返回 `409 room_closed`。
+- `white` 或 `black` 已被占用时返回 `409 side_taken`。
+- 同一房间内同类型同名参与者已存在时返回 `409 participant_exists`。
+- 传入 `spectator` 返回 `400 invalid_side`。观察者只允许 C2 浏览器，不通过 MCP Agent 加入。
+- 成功后返回 `participant_id` 和 `participant_token`，原始 token 只返回一次。
+- 顶层 `participant_id` 与 `participants[]` 中本 Agent 的 `participant_id` 一致，是便于调用方直接保存令牌归属的便利字段。
+
+响应：
+
+```json
+{
+  "room_id": "uuid",
+  "room_code": "ABCD12",
+  "room_status": "active",
+  "participants": [
+    {
+      "participant_id": "uuid",
+      "participant_type": "agent",
+      "display_name": "local-agent",
+      "side": "black",
+      "joined_at": "2026-05-02T20:01:00+08:00"
+    }
+  ],
+  "game_id": "uuid",
+  "participant_id": "uuid",
+  "participant_token": "secret-once",
+  "fen": "current fen",
+  "turn": "white",
+  "status": "active",
+  "version": 0,
+  "legal_moves": ["e2e4"],
+  "moves": [],
+  "updated_at": "2026-05-02T20:01:00+08:00"
+}
+```
+
+### `GET /api/health`
+
+健康检查。
+
+响应：
+
+```json
+{
+  "ok": true
+}
+```
+
 ### `GET /api/rooms/{room_id}/events`
 
 WebSocket 订阅房间和棋局更新。
 
 服务端事件：
+
+`room.participant_joined`：
+
+```json
+{
+  "type": "room.participant_joined",
+  "room_id": "uuid",
+  "participant": {
+    "participant_id": "uuid",
+    "participant_type": "agent",
+    "display_name": "local-agent",
+    "side": "black",
+    "joined_at": "2026-05-02T20:01:00+08:00"
+  }
+}
+```
+
+`game.updated`：
 
 ```json
 {
@@ -458,7 +806,20 @@ WebSocket 订阅房间和棋局更新。
   "last_move": "e2e4",
   "turn": "black",
   "status": "active",
-  "version": 1
+  "version": 1,
+  "legal_moves": ["e7e5"]
+}
+```
+
+`game.updated` 包含更新后局面的 `legal_moves`，避免浏览器和 MCP adapter 在每次收到事件后额外请求一次合法走法接口。若后续事件体积成为瓶颈，可以通过动态配置关闭该字段并让客户端回退到 `GET /api/rooms/{room_id}/legal-moves`。
+
+`error`：
+
+```json
+{
+  "type": "error",
+  "code": "unauthorized_participant",
+  "message": "participant token invalid"
 }
 ```
 
@@ -483,7 +844,8 @@ MCP server 本体运行在本地 `apps/mcp-adapter`，不部署到 Cloudflare Wo
 规则：
 
 - `room_code` 必须存在，且房间状态不能是 `closed`。
-- `side` 可选 `white`、`black`、`spectator`。`white` 和 `black` 在同一房间内不能重复占用。
+- `side` 可选 `white`、`black`。`white` 和 `black` 在同一房间内不能重复占用。
+- `spectator` 不允许通过 MCP 加入，观察者只允许 C2 浏览器。
 - 成功加入后返回 `participant_id` 和 `participant_token`，原始 token 只返回一次。
 - 成功加入后向 WebSocket 订阅者广播 `room.participant_joined`。
 
@@ -554,10 +916,11 @@ Agent 加入房间：
 4. 如果房间不存在，返回 `404 room_not_found`。
 5. 如果房间已关闭，返回 `409 room_closed`。
 6. 如果目标 `side` 已被占用，返回 `409 side_taken`。
-7. 生成 `participant_id` 和 `participant_token`，数据库只保存 token 哈希。
-8. 写入 `room_participants`。
-9. Durable Object 广播 `room.participant_joined`。
-10. 返回当前棋局状态和参与者令牌。
+7. 如果同一房间内同类型同名参与者已存在，返回 `409 participant_exists`。
+8. 生成 `participant_id` 和 `participant_token`，数据库只保存 token 哈希。
+9. 写入 `room_participants`。
+10. Durable Object 广播 `room.participant_joined`。
+11. 返回当前棋局状态和参与者令牌。
 
 提交走法：
 
@@ -574,6 +937,12 @@ Agent 加入房间：
 11. Durable Object 广播 `game.updated`。
 12. 返回更新后的棋局状态。
 
+Durable Object inflight 边界：
+
+- 同一房间同一时刻只处理一个提交请求；后续请求进入 DO 内部队列。
+- 如果 DO 在请求处理期间被驱逐或运行时中断，请求可能以 5xx 或连接中断结束，客户端必须用 `GET /api/rooms/{room_id}` 读取最新 `version` 后重试。
+- 因为走法写入使用 Neon 事务和 `expected_version`，客户端重试不会绕过版本冲突保护，也不会重复写入同一 `ply`。
+
 ## 响应组装
 
 统一响应字段命名使用 `snake_case`，时间使用 RFC3339。
@@ -584,6 +953,7 @@ Agent 加入房间：
 {
   "room_id": "uuid",
   "room_code": "ABCD12",
+  "room_status": "active",
   "game_id": "uuid",
   "fen": "current fen",
   "turn": "white",
@@ -609,13 +979,18 @@ Agent 加入房间：
 ## 错误口径
 
 - `400 invalid_json`：请求体不是合法 JSON。
+- `400 missing_field`：必填字段缺失。
+- `400 invalid_display_name`：`display_name` 为空字符串或超过 64 个字符。
 - `400 invalid_fen`：FEN 无法解析或不是合法局面。
 - `400 invalid_move_format`：走法不是 UCI 格式。
+- `400 invalid_side`：执棋方不是 `white`、`black`、`spectator`。
 - `401 unauthorized_participant`：参与者令牌缺失、无效或不属于该房间。
 - `403 not_your_turn`：参与者不是当前行动方，或只是观察者。
 - `404 room_not_found`：房间不存在。
 - `404 game_not_found`：棋局不存在。
+- `429 rate_limited`：触发限流。
 - `409 side_taken`：目标执棋方已被其他参与者占用。
+- `409 participant_exists`：同一房间内同类型同名参与者已存在。
 - `409 invalid_move`：走法格式正确，但在当前局面不合法。
 - `409 version_conflict`：客户端提交时基于的棋局版本已过期。
 - `409 room_closed`：房间已关闭，不能加入或走棋。
@@ -630,18 +1005,26 @@ Agent 加入房间：
 1. 初始化 monorepo 目录结构：`apps/web`、`apps/worker`、`apps/mcp-adapter`、`packages/shared`、`migrations`。
 2. 初始化 `docker-compose.yml`，定义 `web`、`worker`、`mcp-adapter`、`postgres`、`migrate` 服务。
 3. 所有本地构建、运行、测试、迁移验证命令都写入容器命令或 Make target，Make target 内部只能调用 `docker-compose`。
-4. 新增 Worker 配置模块，完成环境变量、binding、动态配置的初始化加载和校验。
+4. 新增 Worker 配置、结构化日志、健康检查和限流基础设施，完成环境变量、binding、动态配置的初始化加载和校验。
 5. 选择并验证 TypeScript 棋规库，spike 必须在容器内执行：初始局面、FEN、合法走法、UCI 执行。
 6. 新增 PostgreSQL 迁移脚本，创建 `rooms`、`room_participants`、`games`、`game_moves`、`runtime_config`，包含参与者令牌哈希、执棋方唯一约束和走法审计字段，确保本地和 Neon 都是 UTF-8。
 7. 通过 `docker-compose` 执行本地迁移，并校验 `SHOW SERVER_ENCODING` 返回 `UTF8`。
-8. 实现 Worker HTTP API：创建房间、查询房间、查询合法走法。
-9. 实现 Durable Object：房间 WebSocket、参与者广播、参与者令牌校验、执棋方校验、单局串行提交。
+8. 实现 Worker HTTP API：健康检查、创建房间、按房间码加入房间、查询房间、查询合法走法。
+9. 实现 Durable Object：生命周期恢复、空闲关闭、房间 WebSocket、参与者广播、参与者令牌校验、执棋方校验、单局串行提交。
 10. 实现 Neon store，走法提交必须使用事务和 `version`。
 11. 在容器内为 Worker、store、game、config 增加最小测试。
 12. 实现本地 MCP adapter 工具：`join_room`、`get_room_state`、`get_legal_moves`、`submit_move`。
 13. 实现 Vercel 前端页面：创建房间、展示房间码、展示棋盘、提交走法、订阅 WebSocket。
 14. 配置生产部署：Vercel 项目、Cloudflare Worker、Durable Object binding、Hyperdrive/Neon、生产环境变量。
 15. 对 Neon 执行生产迁移，必须显式确认目标环境，避免误操作本地库。
+
+## CI/CD 与发布脚本
+
+- 本地启动、重启、测试、迁移、部署命令必须固化在 `scripts/*.sh`，脚本内部只能调用 `docker-compose` 或容器内命令。
+- CI 先执行容器内安装、typecheck、测试和迁移校验，再允许部署 Worker 和 Vercel。
+- 生产发布顺序：确认 Neon 迁移目标，执行正向迁移，部署 Cloudflare Worker，部署 Vercel 前端，最后用 `GET /api/health` 和一次建房联调验收。
+- 回滚顺序：优先回滚前端和 Worker 版本；如果 schema 变更需要回滚，执行对应 `migrations/rollback/*.down.sql`，且必须人工确认 Neon 项目和备份点。
+- `scripts/deploy-worker.sh` 使用容器内 Wrangler 读取 `apps/worker/wrangler.toml`；`scripts/deploy-web.sh` 使用容器内 Vercel CLI。
 
 ## Review 结论
 
@@ -670,14 +1053,14 @@ Agent 加入房间：
 - Web 和 MCP 都可以携带有效参与者令牌提交合法 UCI 走法并得到新 FEN，同时 `games` 和 `game_moves` 正确落表。
 - 非法 FEN、非法走法、无效参与者令牌、非当前行动方提交、版本冲突、已结束棋局继续走棋都有明确错误码。
 - 浏览器可以通过 WebSocket 接收 `room.participant_joined` 和 `game.updated`。
+- 空闲房间达到配置时间后自动关闭，关闭后加入和走棋返回 `409 room_closed`。
+- Durable Object 恢复后可以从 Neon 读取棋局状态，继续处理查询和提交。
+- `GET /api/health` 返回 `{ "ok": true }`。
 - 生产环境可以完成 Vercel 前端、Cloudflare Worker/Durable Object、Neon PostgreSQL 的 MVP 联调。
 
 ## 待确认项
 
-- 第一阶段前端使用 Next.js App Router 还是更轻的 Vite/React。按 Vercel 交付建议优先 Next.js。
-- 第一阶段同一房间是否只允许一个 Agent 参与，还是允许多个 Agent 作为观察者加入。
-- `room_code` 使用 6 位短码是否足够，还是需要更长随机码。
-- Cloudflare 连接 Neon 优先使用 Hyperdrive，还是直接使用 Neon serverless driver。
+无。
 
 ## 本轮不做
 

@@ -1,0 +1,14 @@
+{
+  "name": "chess-agent-room",
+  "private": true,
+  "packageManager": "pnpm@10.10.0",
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.3"
+  }
+}

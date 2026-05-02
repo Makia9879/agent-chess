@@ -1,0 +1,16 @@
+name = "chess-room-api"
+main = "src/index.ts"
+compatibility_date = "2026-05-02"
+
+[[durable_objects.bindings]]
+name = "ROOM_OBJECT"
+class_name = "RoomObject"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RoomObject"]
+
+[vars]
+CORS_ALLOW_ORIGINS = "http://localhost:3000"
+ROOM_CODE_LENGTH = "6"
+RUNTIME_CONFIG_TTL_SECONDS = "60"
