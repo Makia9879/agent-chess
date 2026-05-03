@@ -23,7 +23,7 @@
 
 ## 复用边界
 
-当前目录只有需求 Markdown，没有现有代码可复用。
+当前代码库已有 TypeScript monorepo scaffold，可复用现有 `apps/web`、`apps/worker`、`apps/mcp-adapter`、`packages/shared`、`migrations` 和 `scripts`。后续改造应优先沿用现有模块边界和 docker-compose 脚本。
 
 可复用的外部能力：
 
