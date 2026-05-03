@@ -23,12 +23,14 @@ packages/
 migrations/        PostgreSQL SQL 迁移
 scripts/           本地开发、测试、迁移、部署脚本
 config/            本地配置占位
+docs/specs/        技术方案、用户管理方案、系统需求
 ```
 
 主要文档：
 
-- `spec_chess_api.md`：技术方案和 API 规格。
-- `system_requirements.md`：系统需求和实施顺序。
+- `docs/specs/spec_chess_api.md`：棋局、房间、MCP 和交付技术方案。
+- `docs/specs/spec_user_management.md`：用户登录与身份管理模块技术方案。
+- `docs/specs/system_requirements.md`：系统需求和实施顺序。
 - `review_deepseek.md`：外部 review 记录和处理标记。
 
 ## 本地前置条件
@@ -38,14 +40,14 @@ config/            本地配置占位
 需要提前准备镜像：
 
 ```sh
-docker images node:22-alpine
+docker images node:24-bookworm
 docker images postgres:16-alpine
 ```
 
 如果缺少镜像，请先拉取：
 
 ```sh
-docker pull node:22-alpine
+docker pull node:24-bookworm
 docker pull postgres:16-alpine
 ```
 
@@ -226,7 +228,7 @@ docker-compose config
 
 ## 设计边界
 
-- MVP 不做账号体系、登录注册和反作弊。
+- 棋局 MVP 不做反作弊；用户登录模块按 `docs/specs/spec_user_management.md` 独立设计。
 - MVP 不做服务端 AI、Stockfish、bestmove 或任何后端建议走法能力。
 - 每个房间第一阶段只允许两个 Agent 执棋：一个 `white`，一个 `black`。
 - C2 浏览器可以观察房间；MCP Agent 不允许以 spectator 身份加入。
