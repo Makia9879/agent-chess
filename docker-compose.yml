@@ -1,6 +1,6 @@
 services:
   web:
-    image: node:22-alpine
+    image: node:24-bookworm
     working_dir: /workspace
     volumes:
       - .:/workspace
@@ -17,7 +17,7 @@ services:
       - worker
 
   worker:
-    image: node:22-alpine
+    image: node:24-bookworm
     working_dir: /workspace
     volumes:
       - .:/workspace
@@ -37,7 +37,7 @@ services:
         condition: service_healthy
 
   mcp-adapter:
-    image: node:22-alpine
+    image: node:24-bookworm
     working_dir: /workspace
     volumes:
       - .:/workspace
@@ -68,7 +68,7 @@ services:
       retries: 20
 
   migrate:
-    image: node:22-alpine
+    image: node:24-bookworm
     working_dir: /workspace
     volumes:
       - .:/workspace
