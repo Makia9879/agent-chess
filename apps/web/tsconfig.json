@@ -5,10 +5,28 @@
     "allowJs": true,
     "noEmit": true,
     "incremental": true,
-    "plugins": [{ "name": "next" }],
-    "lib": ["DOM", "DOM.Iterable", "ES2022"],
-    "types": ["node"]
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "ES2022"
+    ],
+    "types": [
+      "node"
+    ],
+    "esModuleInterop": true
   },
-  "include": ["next-env.d.ts", "src/**/*.ts", "src/**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "include": [
+    "next-env.d.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }

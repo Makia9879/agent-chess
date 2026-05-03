@@ -93,6 +93,71 @@ dd {
   overflow-wrap: anywhere;
 }
 
+.boardWrap {
+  display: grid;
+  justify-content: center;
+  padding: 10px 0 2px;
+}
+
+.board {
+  width: min(560px, 100%);
+  aspect-ratio: 1;
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  border: 1px solid #8a94a8;
+  background: #8a94a8;
+}
+
+.square {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  aspect-ratio: 1;
+}
+
+.square.light {
+  background: #eef2e2;
+}
+
+.square.dark {
+  background: #6d8f6a;
+}
+
+.square span:first-child {
+  font-size: clamp(28px, 7vw, 56px);
+  line-height: 1;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.25));
+}
+
+.whitePiece {
+  color: #f9fafb;
+}
+
+.blackPiece {
+  color: #111827;
+}
+
+.coord {
+  position: absolute;
+  left: 5px;
+  bottom: 4px;
+  font-size: 10px;
+  color: rgba(17, 24, 39, 0.62);
+  pointer-events: none;
+}
+
 .error {
   color: #b42318;
+}
+
+@media (max-width: 720px) {
+  .grid,
+  .moveRow {
+    grid-template-columns: 1fr;
+  }
+
+  dl {
+    grid-template-columns: 1fr;
+  }
 }

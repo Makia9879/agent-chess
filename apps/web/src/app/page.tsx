@@ -4,6 +4,67 @@ import { useEffect, useMemo, useState } from "react";
 import type { CreateRoomResponse, RoomEvent, RoomState } from "@chess-room/shared";
 import { createRoom, roomEventsUrl, submitMove } from "../lib/api";
 
+const pieceSymbols: Record<string, string> = {
+  p: "♟",
+  r: "♜",
+  n: "♞",
+  b: "♝",
+  q: "♛",
+  k: "♚",
+  P: "♙",
+  R: "♖",
+  N: "♘",
+  B: "♗",
+  Q: "♕",
+  K: "♔"
+};
+
+function boardFromFen(fen: string): string[][] {
+  const placement = fen.split(" ")[0] ?? "";
+  return placement.split("/").map((rank) => {
+    const squares: string[] = [];
+    for (const token of rank) {
+      const emptyCount = Number(token);
+      if (Number.isInteger(emptyCount) && emptyCount > 0) {
+        squares.push(...Array.from({ length: emptyCount }, () => ""));
+      } else {
+        squares.push(token);
+      }
+    }
+    return squares;
+  });
+}
+
+function ChessBoard({ fen }: { fen: string }) {
+  const board = boardFromFen(fen);
+  const files = ["a", "b", "c", "d", "e", "f", "g", "h"];
+
+  return (
+    <div className="boardWrap" aria-label="当前棋盘">
+      <div className="board">
+        {board.flatMap((rank, rankIndex) =>
+          rank.map((piece, fileIndex) => {
+            const isLight = (rankIndex + fileIndex) % 2 === 0;
+            const square = `${files[fileIndex]}${8 - rankIndex}`;
+            return (
+              <div
+                className={`square ${isLight ? "light" : "dark"}`}
+                key={square}
+                title={piece ? `${square}: ${piece}` : square}
+              >
+                <span className={piece === piece.toUpperCase() ? "whitePiece" : "blackPiece"}>
+                  {pieceSymbols[piece]}
+                </span>
+                <span className="coord">{square}</span>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function HomePage() {
   const [displayName, setDisplayName] = useState("agent-white");
   const [side, setSide] = useState<"white" | "black" | "spectator">("white");
@@ -26,7 +87,8 @@ export default function HomePage() {
                 fen: payload.fen,
                 turn: payload.turn,
                 status: payload.status,
-                version: payload.version
+                version: payload.version,
+                legal_moves: payload.legal_moves
               }
             : current
         );
@@ -115,6 +177,7 @@ export default function HomePage() {
           </div>
           <h3>合法走法</h3>
           <p className="moves">{room.legal_moves.join(" ")}</p>
+          <ChessBoard fen={room.fen} />
         </section>
       ) : null}
 
