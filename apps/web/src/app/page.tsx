@@ -106,6 +106,7 @@ export default function HomePage() {
   const [authBusy, setAuthBusy] = useState(false);
   const [walletChainId, setWalletChainId] = useState<WalletChainId>("10143");
   const [walletNetwork, setWalletNetwork] = useState("");
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
     void refreshMe();
@@ -195,12 +196,16 @@ export default function HomePage() {
 
   async function handleCreateRoom() {
     setError("");
+    setNotice("");
     try {
       const created = await createRoom(
         fen ? { display_name: displayName, side, fen } : { display_name: displayName, side }
       );
       setRoom(created);
       setParticipantToken(created.participant_token);
+      if (!user) {
+        setNotice("当前为匿名房间。请保存房间码和参与者 token；登录后创建的房间才会出现在个人房间列表。");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "创建房间失败");
     }
@@ -282,6 +287,7 @@ export default function HomePage() {
       {room ? (
         <section className="panel">
           <h2>房间 {room.room_code}</h2>
+          {notice ? <p className="notice">{notice}</p> : null}
           <dl>
             <dt>Room ID</dt>
             <dd>{room.room_id}</dd>

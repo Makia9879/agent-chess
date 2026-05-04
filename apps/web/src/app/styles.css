@@ -184,6 +184,15 @@ dd {
   color: #b42318;
 }
 
+.notice {
+  border: 1px solid #d7b46a;
+  border-radius: 6px;
+  background: #fff8e5;
+  color: #6d4b00;
+  padding: 10px 12px;
+  line-height: 1.5;
+}
+
 @media (max-width: 720px) {
   .topbar {
     align-items: flex-start;
