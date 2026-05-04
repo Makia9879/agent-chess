@@ -1,4 +1,14 @@
 import type { CreateRoomRequest } from "@chess-room/shared";
+import {
+  createWalletChallenge,
+  getMe,
+  getSessionUser,
+  handleGoogleCallback,
+  listMyRooms,
+  logout,
+  startGoogleAuth,
+  verifyWallet
+} from "./auth";
 import { loadConfig, type Env } from "./config";
 import { createChess, gameStatus, legalMoves } from "./game";
 import { error, json, readJson, toErrorResponse, withCors } from "./http";
@@ -9,29 +19,61 @@ export { RoomObject } from "./room-object";
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const origin = request.headers.get("origin");
+    let allowOrigins: string[] = [];
     try {
       const config = loadConfig(env);
+      allowOrigins = config.corsAllowOrigins;
       if (request.method === "OPTIONS") {
-        return withCors(new Response(null, { status: 204 }), origin, config.corsAllowOrigins);
+        return withCors(new Response(null, { status: 204 }), origin, allowOrigins);
       }
-      const response = await route(request, env, config.databaseUrl);
-      return withCors(response, origin, config.corsAllowOrigins);
+      const response = await route(request, env, config);
+      return withCors(response, origin, allowOrigins);
     } catch (err) {
-      return withCors(toErrorResponse(err), origin, []);
+      return withCors(toErrorResponse(err), origin, allowOrigins);
     }
   }
 };
 
-async function route(request: Request, env: Env, databaseUrl: string): Promise<Response> {
+async function route(request: Request, env: Env, config: ReturnType<typeof loadConfig>): Promise<Response> {
   const url = new URL(request.url);
   const parts = url.pathname.split("/").filter(Boolean);
+  const databaseUrl = config.databaseUrl;
+  const store = new Store(databaseUrl);
 
   if (request.method === "GET" && url.pathname === "/api/health") {
     return json({ ok: true });
   }
 
   if (request.method === "POST" && url.pathname === "/api/rooms") {
-    return createRoom(request, env, databaseUrl);
+    return createRoom(request, config, store);
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/me") {
+    return getMe(request, store);
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/me/rooms") {
+    return listMyRooms(request, store);
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/auth/logout") {
+    return logout(request, store);
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/auth/google/start") {
+    return startGoogleAuth(request, store, config);
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/auth/google/callback") {
+    return handleGoogleCallback(request, store, config);
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/auth/wallet/challenge") {
+    return createWalletChallenge(request, store);
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/auth/wallet/verify") {
+    return verifyWallet(request, store, config);
   }
 
   if (request.method === "POST" && parts[0] === "api" && parts[1] === "rooms" && parts[2] === "by-code" && parts[3] && parts[4] === "join") {
@@ -40,7 +82,7 @@ async function route(request: Request, env: Env, databaseUrl: string): Promise<R
       return error("invalid_side", "MCP agents must join as white or black", 400);
     }
     const roomCode = parts[3];
-    const roomId = await new Store(databaseUrl).findRoomIdByCode(roomCode);
+    const roomId = await store.findRoomIdByCode(roomCode);
     if (!roomId) {
       return error("room_not_found", "room does not exist", 404);
     }
@@ -55,10 +97,10 @@ async function route(request: Request, env: Env, databaseUrl: string): Promise<R
   if (parts[0] === "api" && parts[1] === "rooms" && parts[2]) {
     const roomId = parts[2];
     if (request.method === "GET" && parts.length === 3) {
-      return json(await new Store(databaseUrl).getRoomState(roomId));
+      return json(await store.getRoomState(roomId));
     }
     if (request.method === "GET" && parts[3] === "legal-moves") {
-      const state = await new Store(databaseUrl).getRoomState(roomId);
+      const state = await store.getRoomState(roomId);
       return json({ room_id: roomId, game_id: state.game_id, fen: state.fen, legal_moves: state.legal_moves });
     }
     if (parts[3] === "events" || parts[3] === "moves" || parts[3] === "join") {
@@ -69,9 +111,8 @@ async function route(request: Request, env: Env, databaseUrl: string): Promise<R
   return error("not_found", "route not found", 404);
 }
 
-async function createRoom(request: Request, env: Env, databaseUrl: string): Promise<Response> {
+async function createRoom(request: Request, config: ReturnType<typeof loadConfig>, store: Store): Promise<Response> {
   const body = await readJson<CreateRoomRequest>(request);
-  const config = loadConfig(env);
   const displayName = validateDisplayName(body.display_name);
   const side = body.side ?? "white";
   if (!["white", "black", "spectator"].includes(side)) {
@@ -83,7 +124,7 @@ async function createRoom(request: Request, env: Env, databaseUrl: string): Prom
   const participantId = randomId();
   const participantToken = randomToken();
   const code = roomCode(config.roomCodeLength);
-  const store = new Store(databaseUrl);
+  const currentUserId = await getSessionUser(store, request);
 
   await store.createRoom({
     roomId,
@@ -94,7 +135,8 @@ async function createRoom(request: Request, env: Env, databaseUrl: string): Prom
     displayName,
     side,
     fen: chess.fen(),
-    status: gameStatus(chess)
+    status: gameStatus(chess),
+    createdByUserId: currentUserId
   });
 
   const state = await store.getRoomState(roomId);

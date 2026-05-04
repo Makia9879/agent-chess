@@ -69,6 +69,75 @@ export interface LegalMovesResponse {
   legal_moves: string[];
 }
 
+export type AuthProvider = "google" | "wallet";
+export type WalletChainId = "143" | "10143";
+
+export type UserIdentityView =
+  | {
+      provider: "google";
+      email: string;
+      email_verified: boolean;
+    }
+  | {
+      provider: "wallet";
+      wallet_namespace: "evm";
+      wallet_address: string;
+      wallet_chain_id: WalletChainId;
+    };
+
+export interface CurrentUserView {
+  user_id: string;
+  display_name: string;
+  avatar_url: string;
+  identities: UserIdentityView[];
+}
+
+export interface CurrentUserResponse {
+  user: CurrentUserView | null;
+}
+
+export interface GoogleStartResponse {
+  authorization_url: string;
+}
+
+export interface WalletChallengeRequest {
+  wallet_address: string;
+  chain_id: WalletChainId;
+}
+
+export interface WalletChallengeResponse {
+  nonce: string;
+  message: string;
+  expires_at: string;
+}
+
+export interface WalletVerifyRequest {
+  wallet_address: string;
+  chain_id: WalletChainId;
+  nonce: string;
+  signature: string;
+}
+
+export interface LogoutResponse {
+  ok: true;
+}
+
+export interface UserRoomSummary {
+  room_id: string;
+  room_code: string;
+  room_status: RoomStatus;
+  game_id: string;
+  fen: string;
+  status: GameStatus;
+  version: number;
+  updated_at: string;
+}
+
+export interface UserRoomsResponse {
+  rooms: UserRoomSummary[];
+  next_cursor: string | null;
+}
+
 export interface JoinRoomRequest {
   room_code: string;
   display_name: string;

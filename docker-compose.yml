@@ -33,6 +33,9 @@ services:
       PNPM_STORE_DIR: /pnpm/store
       DATABASE_URL: postgres://chess:chess@postgres:5432/chess
       CORS_ALLOW_ORIGINS: http://localhost:3000
+      GOOGLE_REDIRECT_URI: http://localhost:8787/api/auth/google/callback
+      SESSION_MAX_AGE_SECONDS: "2592000"
+      WEB_BASE_URL: http://localhost:3000
       ROOM_CODE_LENGTH: "6"
       RUNTIME_CONFIG_TTL_SECONDS: "60"
     command: sh -lc "pnpm --dir apps/worker dev --ip 0.0.0.0"

@@ -13,5 +13,8 @@ new_sqlite_classes = ["RoomObject"]
 
 [vars]
 CORS_ALLOW_ORIGINS = "http://localhost:3000"
+GOOGLE_REDIRECT_URI = "http://localhost:8787/api/auth/google/callback"
+SESSION_MAX_AGE_SECONDS = "2592000"
+WEB_BASE_URL = "http://localhost:3000"
 ROOM_CODE_LENGTH = "6"
 RUNTIME_CONFIG_TTL_SECONDS = "60"

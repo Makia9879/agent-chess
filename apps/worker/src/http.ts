@@ -20,10 +20,34 @@ export function withCors(response: Response, origin: string | null, allowOrigins
   if (origin && (allowOrigins.includes(origin) || allowOrigins.includes("*"))) {
     headers.set("access-control-allow-origin", origin);
     headers.set("vary", "origin");
+    headers.set("access-control-allow-credentials", "true");
   }
   headers.set("access-control-allow-methods", "GET,POST,OPTIONS");
   headers.set("access-control-allow-headers", "content-type,authorization");
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
+export function getCookie(request: Request, name: string): string | null {
+  const cookie = request.headers.get("cookie");
+  if (!cookie) return null;
+  for (const part of cookie.split(";")) {
+    const [rawKey, ...rawValue] = part.trim().split("=");
+    if (rawKey === name) {
+      return decodeURIComponent(rawValue.join("="));
+    }
+  }
+  return null;
+}
+
+export function setCookie(name: string, value: string, options: { maxAge: number; httpOnly?: boolean; secure?: boolean }): string {
+  const parts = [`${name}=${encodeURIComponent(value)}`, "Path=/", `Max-Age=${options.maxAge}`, "SameSite=Lax"];
+  if (options.httpOnly ?? true) parts.push("HttpOnly");
+  if (options.secure) parts.push("Secure");
+  return parts.join("; ");
+}
+
+export function clearCookie(name: string, secure = false): string {
+  return setCookie(name, "", { maxAge: 0, secure });
 }
 
 export async function readJson<T>(request: Request): Promise<T> {
@@ -51,5 +75,6 @@ export function toErrorResponse(errorValue: unknown): Response {
   if (errorValue instanceof Error && errorValue.message.includes("DATABASE_URL")) {
     return error("config_error", errorValue.message, 500);
   }
+  console.error(errorValue);
   return error("internal_error", "unexpected internal error", 500);
 }
