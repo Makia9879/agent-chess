@@ -1,6 +1,12 @@
+x-node-app: &node-app
+  image: chess-node-pnpm:24-bookworm-pnpm-10.10.0
+  build:
+    context: .
+    dockerfile: config/node.Dockerfile
+
 services:
   web:
-    image: node:24-bookworm
+    <<: *node-app
     working_dir: /workspace
     volumes:
       - .:/workspace
@@ -10,14 +16,14 @@ services:
       PNPM_STORE_DIR: /pnpm/store
       NEXT_PUBLIC_WORKER_BASE_URL: http://localhost:8787
       NEXT_PUBLIC_WS_BASE_URL: ws://localhost:8787
-    command: sh -lc "corepack enable && pnpm --dir apps/web dev --hostname 0.0.0.0"
+    command: sh -lc "pnpm --dir apps/web dev --hostname 0.0.0.0"
     ports:
       - "3000:3000"
     depends_on:
       - worker
 
   worker:
-    image: node:24-bookworm
+    <<: *node-app
     working_dir: /workspace
     volumes:
       - .:/workspace
@@ -29,7 +35,7 @@ services:
       CORS_ALLOW_ORIGINS: http://localhost:3000
       ROOM_CODE_LENGTH: "6"
       RUNTIME_CONFIG_TTL_SECONDS: "60"
-    command: sh -lc "corepack enable && pnpm --dir apps/worker dev --ip 0.0.0.0"
+    command: sh -lc "pnpm --dir apps/worker dev --ip 0.0.0.0"
     ports:
       - "8787:8787"
     depends_on:
@@ -37,7 +43,7 @@ services:
         condition: service_healthy
 
   mcp-adapter:
-    image: node:24-bookworm
+    <<: *node-app
     working_dir: /workspace
     volumes:
       - .:/workspace
@@ -46,7 +52,7 @@ services:
       PNPM_HOME: /pnpm
       PNPM_STORE_DIR: /pnpm/store
       WORKER_BASE_URL: http://worker:8787
-    command: sh -lc "corepack enable && pnpm --dir apps/mcp-adapter dev"
+    command: sh -lc "pnpm --dir apps/mcp-adapter dev"
     depends_on:
       - worker
 
@@ -68,7 +74,7 @@ services:
       retries: 20
 
   migrate:
-    image: node:24-bookworm
+    <<: *node-app
     working_dir: /workspace
     volumes:
       - .:/workspace
@@ -77,7 +83,7 @@ services:
       PNPM_HOME: /pnpm
       PNPM_STORE_DIR: /pnpm/store
       DATABASE_URL: postgres://chess:chess@postgres:5432/chess
-    command: sh -lc "corepack enable && pnpm --dir apps/worker migrate:local"
+    command: sh -lc "pnpm --dir apps/worker migrate:local"
     depends_on:
       postgres:
         condition: service_healthy

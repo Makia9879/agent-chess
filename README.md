@@ -37,7 +37,7 @@ docs/specs/        技术方案、用户管理方案、系统需求
 
 本地开发必须通过 docker-compose 管理，不在宿主机直接执行 `pnpm install`、`pnpm test`、`tsc`、`wrangler dev`、迁移等构建或运行命令。
 
-需要提前准备镜像：
+需要提前准备基础镜像：
 
 ```sh
 docker images node:24-bookworm
@@ -50,6 +50,8 @@ docker images postgres:16-alpine
 docker pull node:24-bookworm
 docker pull postgres:16-alpine
 ```
+
+项目会基于 `node:24-bookworm` 构建本地开发镜像 `chess-node-pnpm:24-bookworm-pnpm-10.10.0`，提前激活 `pnpm@10.10.0`，避免每次运行临时容器时由 Corepack 重复下载 pnpm。
 
 ## 本地开发
 
