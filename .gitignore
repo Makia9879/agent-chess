@@ -9,3 +9,4 @@ coverage/
 .dev.vars
 *.log
 tmp/
+.idea/
